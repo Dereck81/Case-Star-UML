@@ -1,174 +1,175 @@
 #!/usr/bin/python
 
 from modules.functions import _deletekeys, print
+from colorama import Fore, init, Fore, Style
+from collections import defaultdict, deque
+from modules.config import Config
 
+init(autoreset=True)
 class SQLScriptGenerator(object):
 
-	def __init__(self, dict_: dict, idTableColumn: dict) -> None:
-		self.dataTable: dict = dict_
-		self.keysDataTable: list = list(self.dataTable.keys())
-		self.idTableColumn: dict = idTableColumn
+	def __init__(self, dict_: dict, id_table_column: dict) -> None:
+		self.data_table: dict = dict_
+		self.keys_data_table: list = list(self.data_table.keys())
+		self.id_table_column: dict = id_table_column
 
-	def generateScript(self) -> str:
-		self.ListGeneratedTables: dict = dict()
-		self.tableDepen: dict = dict()
-		self.resultFK: str
-		self.currentTable: str
-		self.__concatTypeLengthAttribute()
-		self.__replaceBooleanAttributeToString()
+		self.generated_tables: dict
+		self.table_dependency: dict
+		self.result_FK: str
+		self.current_table: str
 
-		for table in self.keysDataTable:
-			scriptDB: str = str()
-			self.resultFK = str()
-			self.currentTable = table
-			self.tableDepen.update({table : False})
-			scriptDB += f"CREATE TABLE {table} (\n"
-			scriptDB += self.__concatAttributesProperties(self.dataTable[table])
-			scriptDB += self.resultFK.rstrip(',')+'\n'
-			scriptDB += "\n)\nGO"+"\n"*2
-			self.ListGeneratedTables.update({table : scriptDB})
+	def generate_script(self) -> str:
+		self.generated_tables: dict = dict()
+		self.table_dependency: dict = dict()
 
-		print(f"Cantidad de tablas generadas: {len(self.ListGeneratedTables.keys())}", 2, 1)
+		self.__concat_type_length_attribute()
+		self.__replace_boolean_attribute_to_string()
+
+		for table in self.keys_data_table:
+			script: str = str()
+
+			self.result_FK = str()
+			self.current_table = table
+			self.table_dependency.update({table : False})
+
+			if Config.verbose: print(f"Generating table: {table}", 2, 4)
+
+			script += f"CREATE TABLE {table} (\n"
+			script += self.__concat_attributes_properties(self.data_table[table])
+			script += self.result_FK.rstrip(',')+'\n'
+			script += "\n);\n"+"\n"*2
+
+			self.generated_tables.update({table : script})
+
+		print(f"Number of tables generated: {len(self.generated_tables)}", 2, 4)
 		
-		ST: list = self.__SortTables()
-		scriptDB = ''.join(self.ListGeneratedTables.get(table) for table in ST)
+		sort_tables: list = self.__sort_tables()
+		script = ''.join(self.generated_tables.get(table) for table in sort_tables)
 
-		return scriptDB
+		return script
 
-	def __concatAttributesProperties(self, listAttributesDict: list) -> str:
+	def __concat_attributes_properties(self, attributes: list) -> str:
 		result: str = str()
-		# para desactivar el NOT NULL solo remueva de la lista properties el elemente "notNullable"
-		#properties: list = ["name", "type_length", "primaryKey", "unique", "nullable"]
 		properties: list = ["name", "type_length", "primaryKey", "unique", "nullable", "notNullable"]
+		# To disable NOT NULL, simply remove the "notNullable" element from the properties list.	
+		# Example: properties: list = ["name", "type_length", "primaryKey", "unique", "nullable"]
 
-		for i, column in enumerate(listAttributesDict):
+		for i, column in enumerate(attributes):
 			result += "\t"
+
+			if Config.verbose: print(f"Generating table attribute ({self.current_table}): {column['name']}", 2)
+
 			for p in properties:
-				try:
-					result += f"{column[p]} "
-				except KeyError:
-					continue
-			self.__addedFK(column)
+				try: result += f"{column[p]} "
+				except KeyError: continue
+
+			self.__added_FK(column)
 			result = result.rstrip()
-			if len(listAttributesDict) != i+1 :
-				result += ','
-			elif len(self.resultFK) > 0:
-				result += ','
+
+			if len(attributes) != i+1 or len(self.result_FK) > 0 : result += ','
+
 			result += "\n"
 
 		return result.rstrip()
 	
-	def __concatTypeLengthAttribute(self) -> None:
-		for table in self.keysDataTable:
-			for i, column in enumerate(self.dataTable[table]):
+	def __concat_type_length_attribute(self) -> None:
+		for table in self.keys_data_table:
+
+			for i, column in enumerate(self.data_table[table]):
 				type = column.get("type")
 				length = column.get("length")
+
+				length = length if (length is not None and length != 0) else None
 				
-				length = length if (length is None) else (None if length == 0 else length)
-				
-				self.dataTable[table][i] = _deletekeys(self.dataTable[table][i], ["length", "type"])
+				self.data_table[table][i] = _deletekeys(self.data_table[table][i], ["length", "type"])
 				
 				if type and length:
-					self.dataTable[table][i].update({"type_length" : f"{type}({length})"})
-				elif not (type is None) and length is None:
-					self.dataTable[table][i].update({"type_length" : f"{type}"})
+					self.data_table[table][i].update({"type_length" : f"{type}({length})"})
+				elif type is not None:
+					self.data_table[table][i].update({"type_length" : f"{type}"})
 
-	def __replaceBooleanAttributeToString(self) -> None:
+	def __replace_boolean_attribute_to_string(self) -> None:
 		properties: list = ["primaryKey", "unique", "nullable"]
-		replaceBoolToString: dict = {
+		replace_bool_to_string: dict = {
 			"primaryKey"	:	"PRIMARY KEY",
 			"unique"		:	"UNIQUE",
 			"nullable"		:	"NULL",
 			"notNullable"	:	"NOT NULL" 
 		}
 
-		for table in self.keysDataTable:
-			for i, column in enumerate(self.dataTable[table]):
+		for table in self.keys_data_table:
+			for i, column in enumerate(self.data_table[table]):
 				
 				if not "nullable" in column.keys():
-					self.dataTable[table][i].update({"notNullable" : replaceBoolToString["notNullable"]})
+					self.data_table[table][i].update({"notNullable" : replace_bool_to_string["notNullable"]})
 
 				for p in properties:
 					try:
-						#En starUML una propiedad como PK o U, siempre van a ser True
-						#En el caso de que dicho atributo no tenga esa propiedade
-						#No existirá dicha propiedad como false, unique:false (No existe)
-						if type(column[p]) is bool and column[p]:
-								self.dataTable[table][i][p] = replaceBoolToString[p]
-					except KeyError:
-						continue
+						if type(column[p]) is bool and column[p]: 
+							self.data_table[table][i][p] = replace_bool_to_string[p]
+					except KeyError: continue
 
-	def __addedFK(self, column: dict) -> None:
+	def __added_FK(self, column: dict) -> None:
 		if column.get("foreignKey"):
 			try:
-				nameTableColumn = self.__returnNameTableColumn(column["referenceTo"]["$ref"])
-				if nameTableColumn:
-					self.resultFK += f"\n\tFOREIGN KEY ({column['name']}) REFERENCES {nameTableColumn[0]}({nameTableColumn[1]}),"
-					self.__TableDependency(nameTableColumn[0])
+				name_table_column = self.__return_name_table_column(column["referenceTo"]["$ref"])
 
-			except Exception:
-				return False
+				if name_table_column:
+					if Config.verbose: print(f"{Fore.LIGHTCYAN_EX}(Foreign Key){Style.RESET_ALL} Dependency found with table: {name_table_column[0]}({name_table_column[1]})", 2)
+					self.result_FK += f"\n\tFOREIGN KEY ({column['name']}) REFERENCES {name_table_column[0]}({name_table_column[1]}),"
+					self.__table_dependency(name_table_column[0])
+					
+			except Exception: return False
+
 		return
 
-	def __returnNameTableColumn(self, idColumna: str = None) -> list:
+	def __return_name_table_column(self, id_column: str = None) -> list:
 		'''
 		return [nameTable, nameColumn] 
 		'''
-		for table in self.keysDataTable:
-			for column in self.dataTable[table]:
-				if column["_id"] == idColumna:
-					return [table, column["name"]]
+		for table in self.keys_data_table:
+			for column in self.data_table[table]:
+				if column["_id"] == id_column: return [table, column["name"]]
+
 		return list()
 
-	def __TableDependency(self, tableDependency: str) -> None:
-		valueTableDepen = self.tableDepen.get(self.currentTable)
-		if not type(valueTableDepen) is bool:
-			self.tableDepen.update({self.currentTable : valueTableDepen+[tableDependency]})
+	def __table_dependency(self, table_dependency: str) -> None:
+		value_table_dependency = self.table_dependency.get(self.current_table)
+
+		if not type(value_table_dependency) is bool:
+			self.table_dependency.update({self.current_table : value_table_dependency+[table_dependency]})
 		else:
-			self.tableDepen.update({self.currentTable : [tableDependency]})
-
-	def __SortTables(self) -> list:
-		listTablesFalse: list = list()
-		listTablesDepen: list = list()
-		listTablesDepen_F: list = list()
-		del_elements: list = list()
-		indx_: list = list()
-		i = 0
-
-		for table, vbool in self.tableDepen.items():
-			if not type(vbool) is bool:
-				listTablesDepen.append(table)
-			else:
-				listTablesFalse.append(table)
-
-		if not listTablesDepen:
-			return listTablesFalse
+			self.table_dependency.update({self.current_table : [table_dependency]})
 
 
-		for table in listTablesDepen:
-			_lstTbReference = self.tableDepen.get(table, [])
-			if not any(tb in listTablesDepen for tb in _lstTbReference):
-				listTablesDepen_F.append(table)
-				del_elements.append(table)
+	def __sort_tables(self) -> list:
+		print("Reordering tables...", 2)
+
+		graph: dict = {table: dependency if dependency else [] for table, dependency in self.table_dependency.items()}
+		order: list = list()
+
+		number_of_dependencies: defaultdict = defaultdict(int)
 		
-		for x in del_elements:
-			listTablesDepen.remove(x)
+		for table, dependecies in graph.items():
+			number_of_dependencies[table] = len(dependecies)
 		
-		del del_elements
+		for table in graph:
+			number_of_dependencies.setdefault(table, 0)
 
-		while(i < len(listTablesDepen_F)):
-			_lstTbReference = self.tableDepen.get(listTablesDepen_F[i], [])
-			indx_ = list()
-			for tb in _lstTbReference:
-				if tb in listTablesDepen_F:
-					indx_.append(listTablesDepen_F.index(tb))
-					
-			if indx_:
-				for indx in indx_:
-					if i < indx:
-						listTablesDepen_F.insert(i, listTablesDepen_F[indx])
-						listTablesDepen_F.pop(indx+1)
-			else:
-				i+=1
+		queue: deque = deque([table for table in graph if number_of_dependencies[table] == 0])
+		
+		while queue:
+			current: str = queue.popleft()
+			order.append(current)
+			for table in graph:
+				if current in graph[table]:
+					number_of_dependencies[table] -= 1
+					if number_of_dependencies[table] == 0:
+						queue.append(table)
+		
+		if len(order) != len(graph):
+			print("A circular reference was detected, it may not have been sorted correctly.", 2, 3)
+			print(f"Only tables that do not have circular dependencies will be generated, {Fore.GREEN}number of tables to generate: {len(order)}{Style.RESET_ALL}", 2, 3)
 
-		return listTablesFalse + listTablesDepen_F + listTablesDepen
+		return order
+		

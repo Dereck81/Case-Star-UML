@@ -57,3 +57,8 @@ def _deletekeys(dict_: dict, keysD: list = None) -> dict:
 		except KeyError:
 			continue
 	return dict_
+
+def save_file(data: str, output_file: str):
+		fp = open(output_file, 'w', encoding='UTF-8')
+		fp.write(f"/* Generate code by: U2D.py*/\n/* Create by Dereck81 */\n/* Date: {datetime.now()} */\n\n{data}")
+		fp.close()
