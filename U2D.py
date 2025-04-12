@@ -28,7 +28,6 @@ parse.add_argument('-dm', '--data-model', metavar='', type=int, help="the number
 parse.add_argument("-d", "--diagram", metavar='', type=int, help="the number of the diagram to select")
 parse.add_argument("-o", "--output", metavar='', type=str, help="output file name, if not specified, the default name will be 'script.sql'")
 parse.add_argument("-v", "--verbose", action="store_true", help="displays detailed information about the conversion process")
-parse.add_argument("-sdb", "--show-db", metavar='', help="")
 
 args = parse.parse_args()
 
